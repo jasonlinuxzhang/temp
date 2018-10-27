@@ -15,13 +15,13 @@
 
 using namespace std;
 
-//#define THREAD_NUM 1
+#define THREAD_NUM 1
 #define DATA_UNIT (1024 * 1024)
-//#define DATA_NUM 40000
-//#define _M 2
-//#define _D 8
+#define DATA_NUM 40000
+#define _M 2
+#define _D 8
 #define MILLION 1000000
-//#define ONCE_NUM 2
+#define ONCE_NUM 2
 
 long g_index = 0;
 pthread_mutex_t mutex;
@@ -60,31 +60,76 @@ long get_index()
 
 void * handle_encode(void *my_read_time)
 {
+#ifndef _ONETINE
     unsigned char tbls[32 * _M * (_M + ONCE_NUM)] = {0};
     unsigned char enc_matrix[_M * (_M + ONCE_NUM)] = {0};
 
     unsigned char *parity[_M] = {0}; 
     unsigned char *databuf[_M + ONCE_NUM] = {0};
     unsigned char *codebuf[_M];
+#endif
+
+#ifdef _ONETINE
+    unsigned char tbls[32 * _M * _D] = {0};
+    unsigned char enc_matrix[_M * _D] = {0};
+
+    unsigned char *parity[_M] = {0};
+    unsigned char *databuf[_D] = {0};
+#endif
 
     for(int i = 0; i < _M; i++)
     {
         parity[i] = (unsigned char *)malloc(DATA_UNIT * sizeof(unsigned char));
     }    
 
+#ifndef _ONETINE
     for(int i = 0; i < _M; i++)
     {
         databuf[i] = parity[i];
         codebuf[i] = parity[i];
     }
+#endif
 
+#ifndef _ONETINE    
     for(int i = 0; i < _M; i++)
     {
         enc_matrix[i * (_M + ONCE_NUM) + i] = 1;
     }  
+#endif
+
+#ifdef _ONETINE
+    for(int i = 0; i < _M; i++)
+    {
+        for(int j = 0; j < _D; j++)
+            enc_matrix[i * _D + j] = fullEncMatric[i][j];
+    }
+    ec_init_tables(_D, _M, enc_matrix, tbls);
+
+#ifdef _DEBUG
+    for(int k = 0; k < _M; k++)
+    {
+        for(int m = 0; m < _D; m++)
+        {
+            printf("%d ", enc_matrix[k * (_D) + m]);
+        }
+        printf("\n");
+    }
+    
+    for(int k = 0; k < _M; k++)
+    {
+        for(int m = 0; m < _D; m++)
+        {
+            printf("%d ", fullEncMatric[k][m]);
+        }
+        printf("\n");
+    }
+#endif
+#endif    
 
     for(long data_index = get_index(); data_index < DATA_NUM; data_index = get_index())
     {
+
+#ifndef _ONETINE
 
         long mem_index = data_index % (g_memsize_m - _D); 
         for(int i = 0; i < _D; i+=ONCE_NUM)
@@ -126,6 +171,15 @@ void * handle_encode(void *my_read_time)
             }
 #endif
         }
+#endif
+
+#ifdef _ONETINE
+        long mem_index = data_index % (g_memsize_m - _D);
+        for(int i = 0; i < _D; i++)
+            databuf[i] = pmem + (mem_index + i) * 1024 * 1024;
+
+        ec_encode_data(DATA_UNIT, _D, _M, tbls, databuf, parity);
+#endif
     }
 
     for(int i = 0; i < _M; i++)
@@ -140,7 +194,6 @@ int main(int argc, char *argv[]) {
     struct timespec tpend;
     long timedif;
 
-    printf("threadnum:%d, data_strip:%d, _M:%d, _D:%d, ONCE_NUM:%d\n", THREAD_NUM, DATA_NUM, _M, _D, ONCE_NUM);
     pmem = (unsigned char *)malloc(g_memsize_b);
     if(NULL == pmem)
     {
@@ -201,8 +254,7 @@ int main(int argc, char *argv[]) {
     cout<<"it took: "<<timedif<<" microseconds\n"<<endl;
     cout<<"it took: "<<(timedif/MILLION)<<" seconds\n"<<endl;
 
-    cout<<"speed: "<< (DATA_NUM * 1.0)/ timedif * MILLION<<" m/s"<<std::endl;
-    free(pmem);
+    cout<<"speed: "<< (DATA_NUM * 1.0)/ timedif * MILLION<<std::endl;
 
     return 0;
 }

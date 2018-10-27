@@ -12,15 +12,20 @@
 
 using namespace std;
 
-#define _M 2
-#define _D 8
-#define THREAD_NUM 10
+//#define _M 2
+//#define _D 8
+//#define THREAD_NUM 10
 #define DATA_UNIT (1024 * 1024)
-#define DATA_NUM 40000
+//#define DATA_NUM 40000
 #define MILLION 1000000
 
 long g_index = 0;
 pthread_mutex_t mutex;
+unsigned char *pmem = NULL;
+long g_memsize_b = 1024 * 1024 * 1024;
+long g_memsize_m = 1024;
+
+
 unsigned char static_matric[][25] = {
 {1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1 }, 
 {1,  2,  4,  8,   16,   32,   64,  128,   29,   58,  116,  232,  205,  135,   19,   38,   76,  152,   45,   90,  180,  117,  234,  201},
@@ -33,7 +38,6 @@ unsigned char static_matric[][25] = {
 {1,  9,  65,  115,  204,  226,  161,  192,  142,  138,  174,  183,  102,  113,  222,   96,   71,   69,   87,  213,   51,  182,  111,   48}
 };
 
-
 unsigned char fullEncMatric[_M][_D] = {0};
 
 long get_index()
@@ -45,13 +49,6 @@ long get_index()
     pthread_mutex_unlock(&mutex);
 
     return return_index; 
-}
-
-unsigned char *get_data(long data_index)
-{
-    unsigned char *pdata = NULL;
-    pdata = (unsigned char *)malloc(DATA_UNIT * sizeof(char));
-    return pdata;
 }
 
 void * handle_encode(void *)
@@ -74,7 +71,7 @@ void * handle_encode(void *)
     }  
     ec_init_tables(_D, _M, enc_matrix, tbls);
 
-    /*
+#ifdef _DEBUG
     for(int k = 0; k < _M; k++)
     {
         for(int m = 0; m < _D; m++)
@@ -83,7 +80,7 @@ void * handle_encode(void *)
         }
         printf("\n");
     }
-    
+   
     for(int k = 0; k < _M; k++)
     {
         for(int m = 0; m < _D; m++)
@@ -92,18 +89,15 @@ void * handle_encode(void *)
         }
         printf("\n");
     }
-    */
-    
+#endif
+
     for(long data_index = get_index(); data_index < DATA_NUM; data_index = get_index())
     {
+        long mem_index = data_index % (g_memsize_m - _D);
         for(int i = 0; i < _D; i++)
-            databuf[i] = get_data(data_index);
+            databuf[i] = pmem + (mem_index + i) * 1024 * 1024;
 
         ec_encode_data(DATA_UNIT, _D, _M, tbls, databuf, parity);
-
-        for(int i = 0; i < _D; i++)
-            free(databuf[i]);
-
     }
 
     for(int i = 0; i < _M; i++)
@@ -117,6 +111,20 @@ int main() {
     struct timespec tpend;
     long timedif;
 
+    printf("threadnum:%d, data_strip:%d, _M:%d, _D:%d\n", THREAD_NUM, DATA_NUM, _M, _D);
+    pmem = (unsigned char *)malloc(g_memsize_b);
+    if(NULL == pmem)
+    {
+        std::cout<<"malloc fail."<<std::endl;
+        return 0;
+    }
+  
+    std::cout<<"memory allocate end."<<std::endl;;
+    for(long i = 0; i < g_memsize_b; i++)
+    {
+        pmem[i] = rand() % 256;
+    }
+    std::cout<<"memory initialize end."<<std::endl;;
 
     /*
     *   初始化生成矩阵 
@@ -164,6 +172,7 @@ int main() {
     cout<<"it took: "<<timedif<<" microseconds\n"<<endl;
     cout<<"it took: "<<(timedif/MILLION)<<" seconds\n"<<endl;
     cout<<"speed: "<< (DATA_NUM * 1.0)/ timedif * MILLION<<std::endl;
+    free(pmem);
     return 0;
 }
 
